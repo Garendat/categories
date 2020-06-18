@@ -77,6 +77,7 @@ class Sector extends Model
 
     // ============================= Before After ================================= //
 
+	// обновление полей для админки
     public function filterFields($fields, $context = null)
     {
         if(!empty($fields->{'parent'}->value)){
@@ -89,10 +90,13 @@ class Sector extends Model
         }
     }
 
+	// событие перед сохранением 
     public function beforeSave()
     {
+		// создаем уровень вложенности  если его нет отнорсительно родителя
         if(empty($this->lvl))
             $this->lvl = !empty($this->parent) ? $this->parent->lvl + 1: 1;
+		// если категория переместилась то просчитываем у старого родителя, у нового родителя и у себя и у всех своих детей
         elseif($this->attributes['parent_id'] !== $this->original['parent_id'])
         {
             $this->lvl = !empty($this->parent) ? $this->parent->lvl + 1: 1;
@@ -106,55 +110,67 @@ class Sector extends Model
         }
     }
 
+	// берем количество организаций по городу с подписью
     public function getOrgCountViewAttribute(){
         $count = !empty($this->counter->org_count) ? $this->counter->org_count : 0;
         $str = Lang::choice('организация|организации|организаций', $count, [], 'ru');
         return "{$count} {$str}";
     }
+	
+	// берем количество организаций по городу
     public function getOrgCountAttribute(){
         $count = !empty($this->counter->org_count) ? $this->counter->org_count : 0;
         return $count;
     }
-
+	
+	// берем количество программ по городу с подписью
     public function getProgramCountViewAttribute(){
         $count = !empty($this->counter->program_count) ? $this->counter->program_count : 0;
         $str = Lang::choice('программа|программы|программ', $count, [], 'ru');
         return "{$count} {$str}";
     }
-
+	
+	// берем количество программ по городу
     public function getProgramCountAttribute(){
         $count = !empty($this->counter->program_count) ? $this->counter->program_count : 0;
         return $count;
     }
-
+	
+	// общие количество организаций для админки
     public function getOrgCountAllAttribute(){
         $count = !empty($this->counters) ? $this->counters->sum('org_count') : 0;
         return $count;
     }
-
+	
+	// общие количество программ для админки
     public function getProgramCountAllAttribute(){
         $count = !empty($this->counters) ? $this->counters->sum('program_count') : 0;
         return $count;
     }
-
+	
+	// вставка себя к родителю (Inline table)
     public function insertToInlineTree($parent_id = 0){
         DB::table('cds_study_inline_tree')->insert(['sector_id' => $parent_id, 'child' => $this->id]);
     }
-
+	
+	// удаление родителя (Inline table)
     public function deleteRootInTheInlineTree($category_id = null){
         DB::table('cds_study_inline_tree')->whereIn('sector_id', $category_id)->delete();
     }
 
+	// удаление детей (Inline table)
     public function deleteChildrenInTheInlineTree($categories_id = []){
         if(!empty($categories_id))
             DB::table('cds_study_inline_tree')->whereIn('child', $categories_id)->
                 whereNotIn('sector_id', $categories_id)->delete();
     }
-
+	
+	// Удаление категорий полностью (Inline table)
     public function deleteCategoriesInTheInlineTree($category_ids = []){
         DB::table('cds_study_inline_tree')->whereIn('sector_id', $category_ids)->delete();
     }
-
+	
+	// добавление себя ко многим парентам (Inline table)
     public function insertToManyParentsToInlineTree($parents_id = []){
         $arr_result = [];
         foreach($parents_id as $parent_id){
@@ -162,14 +178,16 @@ class Sector extends Model
         }
         if(!empty($arr_result)) DB::table('cds_study_inline_tree')->insert($arr_result);
     }
-
+	
+	// удаление всех категорий где категории и  родители и дети (Inline table)
     public function deleteAllInTheInlineTree($categories = []){
         if(!empty($categories)){
             DB::table('cds_study_inline_tree')->whereIn('sector_id', $categories)
                 ->orWhereIn('child', $categories)->delete();
         }
     }
-
+	
+	// добавление детей ко всем парентам (Inline table)
     public function insertChildrenAndParentsToInlineTree($parents_id = [], $children_id = []){
         if(!empty($parents_id) && !empty($children_id)){
             $arr_to_insert = [];
@@ -182,23 +200,28 @@ class Sector extends Model
             DB::table('cds_study_inline_tree')->insert($arr_to_insert);
         }
     }
-
+	
+	// взять всех детей у себя одним запросом (Inline table)
     public function getChildrenInlineTree(){
         return DB::table('cds_study_inline_tree')->where('sector_id', $this->id)->get();
     }
-
+	
+	// взять всех детей категории одним запросом (Inline table)
     public static function getChildrenInlineTreeStatic($sector_id = null){
         return DB::table('cds_study_inline_tree')->where('sector_id', $sector_id)->lists('child');
     }
-
+	
+	// взять всех детей у немкольких родителей одним запросом (Inline table)
     public static function getChildrenToManyParentsInlineTree($parents_ids = []){
         return DB::table('cds_study_inline_tree')->whereIn('sector_id', $parents_ids)->get();
     }
-
+	
+	// взять всех родителей у себя одним запросом (Inline table)
     public function getParentsInlineTree(){
         return DB::table('cds_study_inline_tree')->where('child', $this->id)->get();
     }
-
+	
+	// взять id у всех родителей у себя одним запросом (Inline table)
     public function getParentsInlineTreeIds(){
         return DB::table('cds_study_inline_tree')->where('child', $this->id)->lists('sector_id');
     }
@@ -240,13 +263,13 @@ class Sector extends Model
             // у нового родителя также меняем кол-во ближайших потомков
             if(!empty($this->attributes['parent_id'])) $this->parent->updateChildren();
 
-            // просчет линейного дерева для 2 уровня в отдельную таблицу (переделываем под 1 уровень в том числе). НУ ЧЕ НАРОД, ПОГНАЛИ????
             // Я ПРИДУМАЛ РЕАЛИЗАЦИЮ НОВОГО АЛГОРИТМА ЛИНЕЙНОГО ДЕРЕВА для ВСЕХ УРОВНЕЙ
             $this->movingCategory();
         }
 
     }
-
+	
+	// после удаления обновляем данные кол-ве детей родителю 
     public function afterDelete(){
         if(!empty($this->parent)) $this->parent->updateChildren();
         //УДАЛЕНИЕ ИЗ ЛИНЕЙНОЙ ТАБЛИЦЫ
@@ -257,11 +280,13 @@ class Sector extends Model
         $this->whereIn('id', $categories)->delete();
 
     }
-
+	
+	// обновление количества детей у родителя
     public function updateChildren(){
         $this->update(['has_child' => $this->children()->count()]);
     }
-
+	
+	// метод, который не позволяет создавать категории в парентах у которых есть программы
     public function beforeValidate(){
         if(!empty($this->attributes['parent_id'])){
             if(!$this->get_parent_programs && self::find($this->attributes['parent_id'])->programs->count() > 0)
@@ -276,27 +301,33 @@ class Sector extends Model
     {
 
     }
-
+	
+	// если нажали в админке на соответствующую кнопку то переносим все программы в новую категорию-ребенка
     public function afterCreate(){
         $this->moveProgramsToLeafSector();
     }
 
     // ============================= Getters Setters ================================= //
+	
+	//перенос программ из парента в себя
     protected function moveProgramsToLeafSector() {
         if($this->get_parent_programs && !empty($this->parent)){
             $this->parent->programs()->update(['sector_id' => $this->id]);
 //            self::updateCounters();
         }
     }
-
+	
+	// не мой код
     public function getSubscribersAttribute(Array $contactInfo){
         //TODO: коллекция кураторов организаций с действующей тарифной опцией
     }
 
+	// для админки чекбокс для переноса
     protected function setGetParentProgramsAttribute($value){
         $this->get_parent_programs = $value;
     }
-
+	
+	// генерация ссылки (СТАРОЕ)
     protected function getLinkAttribute(){
         if($this->attributes['slug']){
             $slug = $this->attributes['slug'];
@@ -304,7 +335,8 @@ class Sector extends Model
         }
         return null;
     }
-
+	
+	// генерация ссылки для поиска
     public function getSearchLinkAttribute(){
         if($this->attributes['slug']){
             return "/education/category/{$this->slug}-{$this->id}";
@@ -314,23 +346,28 @@ class Sector extends Model
 
 
     // ============================= Scopes filter ================================= //
-
+	
+	// поиск категорий без детей 
     public function scopeNotChild($query){
         return $query->doesntHave('children')->withOut('children');
     }
-
+	
+	// категории у которых нет родителей
     public function scopeGetRootCategories($query){
         return $query->whereNull('parent_id');
     }
 
+	// категории по уровню
     public function scopeGetCategoriesByLevel($query, $level = null){
         return $query->whereLvl($level);
     }
-
+	
+	// не мой код
     public function scopeLastLevel($query) {
         return $query->where('has_child', 0);
     }
-
+	
+	// поиск по фразе
     public function scopeByPhrase($query, $phrase = ''){
 
         if(!empty($phrase)){
@@ -363,11 +400,13 @@ class Sector extends Model
 
         return $query;
     }
-
+	
+	// популярные категории
     public function scopeIsPopular($query){
         return $query->where('is_popular', true);
     }
-
+	
+	// категории на главной
     public function scopeIsGeneral($query){
         return $query->where('is_general', true);
     }
@@ -375,13 +414,15 @@ class Sector extends Model
     // ============================= Make Scopes ================================= //
 
     // ============================= Public Methods ================================= //
-
+	
+	// поиск по слагу
     public static function getCategoryBySlug($slug = ''){
         $category = self::where('slug', $slug)->get();
         if(!empty($category)) $category = $category->first();
         return $category;
     }
-
+	
+	// разбор search_link и возвращение категории
     public static function getCategoryBySlugAndId($str = ''){
         $category = null;
         if(!empty($str)){
@@ -393,15 +434,18 @@ class Sector extends Model
         }
         return $category;
     }
-
+	
+	// родитель со всеми детеми для поиска в ширину
     public function getRootWithChildren(){
         return $this->parent()->with('getRootWithChildren')->with('children');
     }
-
+	
+	// родитель со своими родителями (рекурсивно)
     public function getRoot(){
         return $this->parent()->with('getRoot');
     }
 
+	// все родителю с детьми для левого меню (Функционал выпилили)
     public function getAllParentsWithChildren(){
         $parent_objects = [];
         $ids = [$this->id];
@@ -421,6 +465,7 @@ class Sector extends Model
         return [$ids, $parent_objects];
     }
 
+	// поиск дерева до определенного уровня
     public function getFindTreeToLvl($lvl = null){
         $result = [];
 
@@ -443,7 +488,8 @@ class Sector extends Model
 
         return $result;
     }
-
+	
+	// поиск id родителя определенного уровня
     public function getFindParentToLvl($lvl = 1, $object_id = null){
         $result = null;
         if ($object_id)
@@ -466,7 +512,8 @@ class Sector extends Model
         }
         return $result;
     }
-
+	
+	// возвращение парентов по нескольким уровням
     public function getFindManyParentsToLvl($lvls = [], $object_id = null){
         $result = [];
         if ($object_id) {
@@ -482,7 +529,8 @@ class Sector extends Model
         }
         return $result;
     }
-
+	
+	// поиск категорий и разбор массива для поиска в ширину на категории у которых есть дети и нет детей
     public static function getCategoriesHasOrNoneChild($phrases = '', $arr = []){
         $categories = self::whereIn('id', $arr)->when(!empty($phrases),
             function($q) use($phrases){
@@ -499,6 +547,7 @@ class Sector extends Model
         return ['none_child' => $result_category_ids , 'has_child' => $parent_ids];
     }
 
+	// поиск в ширину по id и фразам совместно
     public static function getCategoriesByIdAndPhrases($phrases = '', $parent_ids = []){
         $filter_categories = self::getCategoriesHasOrNoneChild($phrases, $parent_ids);
         $result_category_ids = $filter_categories['none_child'];
@@ -521,7 +570,8 @@ class Sector extends Model
         }
         return $result_category_ids;
     }
-
+	
+	// анные для сеоблока, так написан по скольку если данных каких-то нет то они перекрываются дефолтном на сайте
     public function getSeoArray(){
         return !empty($this->seo_description) ? [
             'text' => $this->seo_text,
@@ -530,16 +580,18 @@ class Sector extends Model
             'keywords' => $this->seo_keywords, 'image' => $this->getImagePath()] : [];
 
     }
-
+	
+	// картинка
     public function getImagePath(){
         return !empty($this->image) ? $this->image->getPath() : null;
     }
-
+	
+	// главная картинка
     public function getGeneralImage(){
         return $this->general_image->getThumb(560, 585, ['mode' => 'crop']);
     }
 
-
+	// все родители
     public function getAllRoot()
     {
         $parent_ids = [$this->id];
@@ -552,7 +604,8 @@ class Sector extends Model
         }
         return $parent_ids;
     }
-
+	
+	// перемещение категорий
     protected function movingCategory(){
         // РЕАЛИЗАЦИЯ ПЕРЕМЕЩЕНИЯ КАТЕГОРИЙ
         $children = $this->getAllChildren()->pluck('id');
@@ -563,7 +616,8 @@ class Sector extends Model
         // И наконец пересчитаем все программы и все организации (уникальные значения) для старых и новых родителей
         self::updateCounters();
     }
-
+	
+	// обновление количеств организаций и программ (Мне помогали) по многим условиям и по городам 
     static function updateCounters($ids = [], $level = null) {
         \DB::update('
             UPDATE cds_study_sector_counters set org_count = 0, program_count = 0;
@@ -608,12 +662,14 @@ class Sector extends Model
             '
         );
     }
-
+	
+	// seo картинка
     public function getSeoImageAttribute() {
         if(!empty($this->image)) $this->image['path'];
         return null;
     }
-
+	
+	// берем категорию с количеством по городам
     public function scopeWithCounter($query){
         return $query->with(['counters' => function($query){
             return $query->byCity();
